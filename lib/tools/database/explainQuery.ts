@@ -4,7 +4,7 @@ import { queryPostgres } from '@/lib/db/postgres';
 import { querySQLite } from '@/lib/db/sqlite';
 import { validateReadOnlyQuery } from '@/lib/validators/queryValidator';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
-import { truncateText } from '@/lib/tools/toolUtils';
+import { truncateText } from '@/lib/tools/database/toolUtils';
 
 export async function explainQuery(
   db: DBType,

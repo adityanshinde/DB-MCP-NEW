@@ -4,7 +4,7 @@ import { queryMySQL } from '@/lib/db/mysql';
 import { queryPostgres } from '@/lib/db/postgres';
 import { getTablesSQLite, querySQLite } from '@/lib/db/sqlite';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
-import { normalizeSchemaFilter } from '@/lib/tools/toolUtils';
+import { normalizeSchemaFilter } from '@/lib/tools/database/toolUtils';
 
 type ColumnMatch = {
   schema?: string;

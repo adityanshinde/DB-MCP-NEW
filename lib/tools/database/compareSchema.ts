@@ -1,4 +1,4 @@
-import { getTableSchema } from '@/lib/tools/getSchema';
+import { getTableSchema } from '@/lib/tools/database/getSchema';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
 
 type ComparedColumn = {

@@ -1,5 +1,5 @@
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
-import { getRoutineSummary } from '@/lib/tools/getRoutineSummary';
+import { getRoutineSummary } from '@/lib/tools/database/getRoutineSummary';
 
 export async function getFunctionSummary(
   db: DBType,

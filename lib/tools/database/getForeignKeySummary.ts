@@ -1,5 +1,5 @@
 import { METADATA_CACHE_TTLS, readThroughMetadataCache } from '@/lib/cache/metadataCache';
-import { getRelationships } from '@/lib/tools/getRelationships';
+import { getRelationships } from '@/lib/tools/database/getRelationships';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
 
 type RelationshipRow = Record<string, unknown>;

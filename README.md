@@ -33,11 +33,9 @@ The backend never connects to databases in write mode and rejects unsafe SQL bef
 - `lib/config.ts` - central configuration and env access
 - `lib/db/postgres.ts` - PostgreSQL connection pool and query helper
 - `lib/db/mssql.ts` - MSSQL connection pool and query helper
-- `lib/tools/runQuery.ts` - safe query execution tool
-- `lib/tools/listTables.ts` - list tables tool
-- `lib/tools/getSchema.ts` - table schema tool
-- `lib/tools/getRelationships.ts` - FK relationship discovery tool
-- `lib/tools/listStoredProcedures.ts` - stored procedure listing tool
+- `lib/mcp/createMcpServer.ts` - shared MCP server factory (used by HTTP route and stdio)
+- `lib/tools/database/` - all database tools (runQuery, listTables, getSchema, etc.)
+- `lib/tools/github/` - all GitHub tools (getRepoTree, getFileContent, etc.)
 - `lib/validators/queryValidator.ts` - read-only SQL validation
 - `lib/types.ts` - shared types for requests and responses
 

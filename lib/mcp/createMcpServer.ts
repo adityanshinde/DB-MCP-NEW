@@ -1,43 +1,47 @@
 import * as z from 'zod/v4';
 
-import { McpServer } from '../../mcp-sdk-runtime.mjs';
+import { McpServer } from '@modelcontextprotocol/server';
 import { CONFIG } from '../config';
-import { getConstraints } from '../tools/getConstraints';
-import { compareSchema } from '../tools/compareSchema';
-import { getForeignKeySummary } from '../tools/getForeignKeySummary';
-import { getDatabaseInfo } from '../tools/getDatabaseInfo';
-import { getColumnStats } from '../tools/getColumnStats';
-import { compareObjectVersions } from '../tools/compareObjectVersions';
-import { getDependencyGraph } from '../tools/getDependencyGraph';
-import { getFunctionSummary } from '../tools/getFunctionSummary';
-import { getIndexes } from '../tools/getIndexes';
-import { getRelationPath } from '../tools/getRelationPath';
-import { getProcedureSummary } from '../tools/getProcedureSummary';
-import { getRelationships } from '../tools/getRelationships';
-import { getSampleRows } from '../tools/getSampleRows';
-import { explainQuery } from '../tools/explainQuery';
-import { getTableSchema } from '../tools/getSchema';
-import { getTableSampleByColumns } from '../tools/getTableSampleByColumns';
-import { getTableSummary } from '../tools/getTableSummary';
-import { executeReadQuery } from '../tools/executeReadQuery';
+import { getConstraints } from '../tools/database/getConstraints';
+import { compareSchema } from '../tools/database/compareSchema';
+import { getForeignKeySummary } from '../tools/database/getForeignKeySummary';
+import { getDatabaseInfo } from '../tools/database/getDatabaseInfo';
+import { getColumnStats } from '../tools/database/getColumnStats';
+import { compareObjectVersions } from '../tools/database/compareObjectVersions';
+import { getDependencyGraph } from '../tools/database/getDependencyGraph';
+import { getFunctionSummary } from '../tools/database/getFunctionSummary';
+import { getIndexes } from '../tools/database/getIndexes';
+import { getRelationPath } from '../tools/database/getRelationPath';
+import { getProcedureSummary } from '../tools/database/getProcedureSummary';
+import { getRelationships } from '../tools/database/getRelationships';
+import { getSampleRows } from '../tools/database/getSampleRows';
+import { explainQuery } from '../tools/database/explainQuery';
+import { getTableSchema } from '../tools/database/getSchema';
+import { getTableSampleByColumns } from '../tools/database/getTableSampleByColumns';
+import { getTableSummary } from '../tools/database/getTableSummary';
+import { executeReadQuery } from '../tools/database/executeReadQuery';
 import { listOrgRepos } from '../tools/github/listOrgRepos';
 import { getRepoTree } from '../tools/github/getRepoTree';
 import { getFileContent } from '../tools/github/getFileContent';
 import { searchCode } from '../tools/github/searchCode';
 import { fileSummary } from '../tools/github/fileSummary';
 import { moduleSummary } from '../tools/github/moduleSummary';
-import { getViewSummary } from '../tools/getViewSummary';
-import { listSchemas } from '../tools/listSchemas';
-import { listStoredProcedures } from '../tools/listStoredProcedures';
-import { listTables } from '../tools/listTables';
-import { getRowCount } from '../tools/getRowCount';
-import { searchTables } from '../tools/searchTables';
-import { searchViews } from '../tools/searchViews';
-import { searchFunctions } from '../tools/searchFunctions';
-import { searchProcedures } from '../tools/searchProcedures';
-import { searchColumns } from '../tools/searchColumns';
-import { getViewDefinition } from '../tools/getViewDefinition';
-import { runQuery } from '../tools/runQuery';
+import { getCommitHistory } from '../tools/github/getCommitHistory';
+import { getFileHistory } from '../tools/github/getFileHistory';
+import { compareRefs } from '../tools/github/compareRefs';
+import { getPullRequestComments } from '../tools/github/getPullRequestComments';
+import { getViewSummary } from '../tools/database/getViewSummary';
+import { listSchemas } from '../tools/database/listSchemas';
+import { listStoredProcedures } from '../tools/database/listStoredProcedures';
+import { listTables } from '../tools/database/listTables';
+import { getRowCount } from '../tools/database/getRowCount';
+import { searchTables } from '../tools/database/searchTables';
+import { searchViews } from '../tools/database/searchViews';
+import { searchFunctions } from '../tools/database/searchFunctions';
+import { searchProcedures } from '../tools/database/searchProcedures';
+import { searchColumns } from '../tools/database/searchColumns';
+import { getViewDefinition } from '../tools/database/getViewDefinition';
+import { runQuery } from '../tools/database/runQuery';
 import { logMcpError } from '../runtime/observability';
 import type { ToolResponse } from '../types';
 
@@ -233,6 +237,99 @@ export function createMcpServer(): McpServer {
     },
     async ({ org, repo, path, branch, max_files, extensions }) =>
       toTextResult(await moduleSummary({ org, repo, path, branch, max_files, extensions }))
+  );
+
+  server.registerTool(
+    'github.get_commit_history',
+    {
+      title: 'GitHub Commit History',
+      description: 'List recent commits for a repository, optionally filtered by branch, path, or author.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      },
+      inputSchema: z.object({
+        org: z.string().optional(),
+        repo: z.string().min(1),
+        branch: z.string().optional(),
+        path: z.string().optional(),
+        author: z.string().optional(),
+        page: z.number().int().min(1).max(100).default(1),
+        per_page: z.number().int().min(1).max(100).default(10)
+      })
+    },
+    async ({ org, repo, branch, path, author, page, per_page }) =>
+      toTextResult(await getCommitHistory(repo, branch, path, author, page, per_page, org))
+  );
+
+  server.registerTool(
+    'github.get_file_history',
+    {
+      title: 'GitHub File History',
+      description: 'List commit history for a single file to show who changed it over time.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      },
+      inputSchema: z.object({
+        org: z.string().optional(),
+        repo: z.string().min(1),
+        path: z.string().min(1),
+        branch: z.string().optional(),
+        page: z.number().int().min(1).max(100).default(1),
+        per_page: z.number().int().min(1).max(100).default(10)
+      })
+    },
+    async ({ org, repo, path, branch, page, per_page }) =>
+      toTextResult(await getFileHistory(repo, path, branch, page, per_page, org))
+  );
+
+  server.registerTool(
+    'github.compare_refs',
+    {
+      title: 'GitHub Compare Refs',
+      description: 'Compare two branches, tags, or commits and return a compact diff summary.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      },
+      inputSchema: z.object({
+        org: z.string().optional(),
+        repo: z.string().min(1),
+        base: z.string().min(1),
+        head: z.string().min(1),
+        max_files: z.number().int().min(1).max(50).default(20)
+      })
+    },
+    async ({ org, repo, base, head, max_files }) =>
+      toTextResult(await compareRefs(repo, base, head, max_files, undefined, org))
+  );
+
+  server.registerTool(
+    'github.get_pull_request_comments',
+    {
+      title: 'GitHub Pull Request Comments',
+      description: 'Return issue comments, review comments, and review submissions for a pull request.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      },
+      inputSchema: z.object({
+        org: z.string().optional(),
+        repo: z.string().min(1),
+        pull_number: z.number().int().min(1)
+      })
+    },
+    async ({ org, repo, pull_number }) =>
+      toTextResult(await getPullRequestComments(repo, pull_number, org))
   );
 
   server.registerTool(

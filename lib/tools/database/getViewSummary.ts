@@ -5,7 +5,7 @@ import { queryMySQL } from '@/lib/db/mysql';
 import { queryPostgres } from '@/lib/db/postgres';
 import { querySQLite } from '@/lib/db/sqlite';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
-import { normalizeSchemaFilter, truncateText } from '@/lib/tools/toolUtils';
+import { normalizeSchemaFilter, truncateText } from '@/lib/tools/database/toolUtils';
 
 type ColumnRow = {
   name: string;

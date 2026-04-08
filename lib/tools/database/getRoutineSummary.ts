@@ -3,7 +3,7 @@ import { queryMSSQL } from '@/lib/db/mssql';
 import { queryMySQL } from '@/lib/db/mysql';
 import { queryPostgres } from '@/lib/db/postgres';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
-import { normalizeSchemaFilter, truncateText } from '@/lib/tools/toolUtils';
+import { normalizeSchemaFilter, truncateText } from '@/lib/tools/database/toolUtils';
 
 type RoutineKind = 'PROCEDURE' | 'FUNCTION';
 

@@ -2,8 +2,8 @@ import { queryMSSQL } from '@/lib/db/mssql';
 import { queryMySQL } from '@/lib/db/mysql';
 import { queryPostgres } from '@/lib/db/postgres';
 import { querySQLite } from '@/lib/db/sqlite';
-import { getTableSchema } from '@/lib/tools/getSchema';
-import { normalizeSchemaFilter, quoteIdentifier } from '@/lib/tools/toolUtils';
+import { getTableSchema } from '@/lib/tools/database/getSchema';
+import { normalizeSchemaFilter, quoteIdentifier } from '@/lib/tools/database/toolUtils';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
 
 type ColumnStat = {
