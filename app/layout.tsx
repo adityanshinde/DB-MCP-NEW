@@ -6,8 +6,8 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DB-MCP',
-  description: 'Database MCP server with local stdio and hosted HTTP support.'
+  title: 'DB-MCP BYOC',
+  description: 'Public MCP server with encrypted bring-your-own-credentials support for databases and GitHub.'
 };
 
 export default function RootLayout({

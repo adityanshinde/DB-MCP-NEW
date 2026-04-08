@@ -2,6 +2,7 @@
 
 This project is a remote MCP server for safe, read-only database access.
 It is built with Next.js App Router, TypeScript, and a Node.js runtime so it can run on Vercel.
+It also supports a public bring-your-own-credentials flow for both databases and GitHub.
 
 ## What this project does
 
@@ -14,6 +15,8 @@ Claude or any MCP client can use it to:
 - inspect foreign-key relationships
 - list stored procedures
 - run safe read-only SQL queries
+- log in with a shared app password
+- store encrypted database and GitHub credentials per user session
 
 The backend never connects to databases in write mode and rejects unsafe SQL before execution.
 
@@ -30,14 +33,14 @@ The backend never connects to databases in write mode and rejects unsafe SQL bef
 ## Project structure
 
 - `app/api/mcp/route.ts` - MCP HTTP handler
+- `app/api/byoc/login/route.ts` - public BYOC login endpoint
+- `app/api/byoc/credentials/route.ts` - encrypted BYOC credential storage endpoint
 - `lib/config.ts` - central configuration and env access
+- `lib/runtime/byoc.ts` - BYOC session store, encryption, and request context
 - `lib/db/postgres.ts` - PostgreSQL connection pool and query helper
 - `lib/db/mssql.ts` - MSSQL connection pool and query helper
-- `lib/tools/runQuery.ts` - safe query execution tool
-- `lib/tools/listTables.ts` - list tables tool
-- `lib/tools/getSchema.ts` - table schema tool
-- `lib/tools/getRelationships.ts` - FK relationship discovery tool
-- `lib/tools/listStoredProcedures.ts` - stored procedure listing tool
+- `lib/tools/database/` - database tool modules and shared database helpers
+- `lib/tools/github/` - GitHub tool namespace
 - `lib/validators/queryValidator.ts` - read-only SQL validation
 - `lib/types.ts` - shared types for requests and responses
 
@@ -67,6 +70,9 @@ GITHUB_ORG_REPO_PAGE_SIZE=30
 GITHUB_REPO_RESOLUTION_MAX_SCANS=3
 GITHUB_SUMMARY_CONTEXT_LINES=3
 GITHUB_SUMMARY_PREVIEW_BYTES=2000
+MCP_APP_PASSWORD=replace_with_shared_app_password
+MCP_CREDENTIALS_ENCRYPTION_KEY=replace_with_a_long_random_secret
+MCP_BYOC_SESSION_TTL_SECONDS=2592000
 UPSTASH_REDIS_REST_URL=https://your-upstash-instance.upstash.io
 UPSTASH_REDIS_REST_TOKEN=replace_with_upstash_token
 MCP_CACHE_L1=true
@@ -77,7 +83,9 @@ SQLITE_ALLOWED_DIR=C:\path\to\allowed\sqlite\dir
 
 Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to enable the shared L2 cache. `MCP_CACHE_L1=true` keeps the optional in-memory L1 cache on for warm instances.
 
-Set `GITHUB_PAT`, `GITHUB_ORG_NAME`, and `GITHUB_ALLOWED_REPOS` to enable the read-only GitHub tools. The allowlist is required and only `owner/repo` pairs in that list can be accessed. `GITHUB_ALLOWED_ORGS` lets you restrict org-level listing. `GITHUB_MAX_FILE_SIZE_BYTES` keeps file fetches bounded, `GITHUB_TREE_MAX_DEPTH` limits repository tree traversal, `GITHUB_ORG_REPO_PAGE_SIZE` bounds org listing pages, and `GITHUB_SUMMARY_CONTEXT_LINES` / `GITHUB_SUMMARY_PREVIEW_BYTES` keep summaries compact.
+Set `GITHUB_PAT`, `GITHUB_ORG_NAME`, and `GITHUB_ALLOWED_REPOS` to enable the read-only GitHub tools in private or self-hosted mode. The allowlist is required and only `owner/repo` pairs in that list can be accessed. `GITHUB_ALLOWED_ORGS` lets you restrict org-level listing. `GITHUB_MAX_FILE_SIZE_BYTES` keeps file fetches bounded, `GITHUB_TREE_MAX_DEPTH` limits repository tree traversal, `GITHUB_ORG_REPO_PAGE_SIZE` bounds org listing pages, and `GITHUB_SUMMARY_CONTEXT_LINES` / `GITHUB_SUMMARY_PREVIEW_BYTES` keep summaries compact.
+
+To enable public BYOC mode, set `MCP_APP_PASSWORD` and `MCP_CREDENTIALS_ENCRYPTION_KEY`, plus `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for encrypted persistence. The homepage at `/` lets users mint a session token, save database and GitHub credentials, and then send `Authorization: Bearer <token>` to `/api/mcp`.
 
 ## Centralized config behavior
 

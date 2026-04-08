@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 
 import { CONFIG } from '@/lib/config';
+import { getActiveDatabaseCredentials } from '@/lib/runtime/byoc';
 import type { DatabaseCredentials } from '@/lib/types';
 
 let defaultPool: mysql.Pool | null = null;
@@ -57,6 +58,10 @@ function getDynamicPool(credentials: DatabaseCredentials): mysql.Pool {
 }
 
 async function withPoolConnection<T>(credentials: DatabaseCredentials | undefined, work: (connection: mysql.PoolConnection) => Promise<T>): Promise<T> {
+  if (CONFIG.byoc.enabled && !credentials) {
+    throw new Error('BYOC mode is enabled. MySQL credentials are required.');
+  }
+
   const pool = credentials ? getDynamicPool(credentials) : getDefaultPool();
   let connection: mysql.PoolConnection | null = null;
 
@@ -82,7 +87,7 @@ export async function queryMySQL(
   credentials?: DatabaseCredentials,
   params: unknown[] = []
 ): Promise<unknown> {
-  return withPoolConnection(credentials, async (connection) => {
+  return withPoolConnection(credentials ?? getActiveDatabaseCredentials('mysql'), async (connection) => {
     const [rows] = await connection.query({ sql: query, timeout: CONFIG.app.queryTimeoutMs }, params);
     return rows;
   });
@@ -91,7 +96,7 @@ export async function queryMySQL(
 export async function getTablesMySQL(
   credentials?: DatabaseCredentials
 ): Promise<string[]> {
-  return withPoolConnection(credentials, async (connection) => {
+  return withPoolConnection(credentials ?? getActiveDatabaseCredentials('mysql'), async (connection) => {
     const [rows] = await connection.query(
       'SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE()'
     );
@@ -104,7 +109,7 @@ export async function getSchemaMySQL(
   table: string,
   credentials?: DatabaseCredentials
 ): Promise<Array<{ name: string; type: string; nullable: boolean }>> {
-  return withPoolConnection(credentials, async (connection) => {
+  return withPoolConnection(credentials ?? getActiveDatabaseCredentials('mysql'), async (connection) => {
     const [rows] = await connection.query(
       'SELECT COLUMN_NAME as name, COLUMN_TYPE as type, IS_NULLABLE as nullable FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
       [table]
@@ -124,7 +129,7 @@ export async function getRelationshipsMySQL(
   table?: string,
   credentials?: DatabaseCredentials
 ): Promise<Array<{ constraint: string; table: string; column: string; referenced_table: string; referenced_column: string }>> {
-  return withPoolConnection(credentials, async (connection) => {
+  return withPoolConnection(credentials ?? getActiveDatabaseCredentials('mysql'), async (connection) => {
     let query = `
       SELECT 
         CONSTRAINT_NAME as constraint,

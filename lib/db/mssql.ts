@@ -1,6 +1,7 @@
 import sql from 'mssql';
 
 import { CONFIG } from '@/lib/config';
+import { getActiveDatabaseCredentials } from '@/lib/runtime/byoc';
 import type { DatabaseCredentials } from '@/lib/types';
 
 let poolPromise: Promise<sql.ConnectionPool> | null = null;
@@ -71,8 +72,13 @@ export async function queryMSSQL(
   params: Record<string, unknown> = {},
   credentials?: DatabaseCredentials['mssql']
 ) {
-  const isDynamic = Boolean(credentials);
-  const pool = credentials ? await getDynamicPool(credentials) : await getPool();
+  const resolvedCredentials = credentials ?? getActiveDatabaseCredentials('mssql')?.mssql;
+  if (CONFIG.byoc.enabled && !resolvedCredentials) {
+    throw new Error('BYOC mode is enabled. MSSQL credentials are required.');
+  }
+
+  const isDynamic = Boolean(resolvedCredentials);
+  const pool = resolvedCredentials ? await getDynamicPool(resolvedCredentials) : await getPool();
   let didFail = false;
 
   try {

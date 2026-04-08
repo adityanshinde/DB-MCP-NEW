@@ -1,4 +1,5 @@
 import { buildStableHash, readThroughCache, readThroughCacheDetailed } from '@/lib/cache/toolCache';
+import { fingerprintGitHubCredentials } from '@/lib/runtime/byoc';
 
 type GitHubCacheOptions<T> = {
   org?: string;
@@ -35,8 +36,9 @@ function buildCacheKey(options: Pick<GitHubCacheOptions<unknown>, 'org' | 'repo'
   const branchPart = options.branch?.trim() || 'default';
   const pathPart = options.path?.trim() || '';
   const paramsPart = buildStableHash(options.params ?? {});
+  const credentialPart = fingerprintGitHubCredentials();
 
-  return `github:${orgPart}:${repoPart}:${branchPart}:${options.tool}:${pathPart}:${paramsPart}`;
+  return `github:${orgPart}:${repoPart}:${branchPart}:${options.tool}:${pathPart}:${paramsPart}:${credentialPart}`;
 }
 
 export async function readThroughGitHubCache<T>(options: GitHubCacheOptions<T>): Promise<T> {

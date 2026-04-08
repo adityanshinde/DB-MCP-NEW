@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import path from 'node:path';
 
 import { CONFIG } from '@/lib/config';
+import { getActiveDatabaseCredentials } from '@/lib/runtime/byoc';
 import type { DatabaseCredentials } from '@/lib/types';
 
 let defaultDb: sqlite3.Database | null = null;
@@ -96,6 +97,10 @@ function getDynamicDatabase(credentials: DatabaseCredentials): Promise<sqlite3.D
 }
 
 async function withSQLiteDatabase<T>(credentials: DatabaseCredentials | undefined, work: (db: sqlite3.Database) => Promise<T>): Promise<T> {
+  if (CONFIG.byoc.enabled && !credentials) {
+    throw new Error('BYOC mode is enabled. SQLite credentials are required.');
+  }
+
   const db = await (credentials ? getDynamicDatabase(credentials) : getDefaultDatabase());
 
   try {
@@ -146,13 +151,13 @@ export async function querySQLite(
   credentials?: DatabaseCredentials,
   params: unknown[] = []
 ): Promise<unknown> {
-  return withSQLiteDatabase(credentials, async (db) => allRows<unknown>(db, query, params));
+  return withSQLiteDatabase(credentials ?? getActiveDatabaseCredentials('sqlite'), async (db) => allRows<unknown>(db, query, params));
 }
 
 export async function getTablesSQLite(
   credentials?: DatabaseCredentials
 ): Promise<string[]> {
-  return withSQLiteDatabase(credentials, async (db) => {
+  return withSQLiteDatabase(credentials ?? getActiveDatabaseCredentials('sqlite'), async (db) => {
     const rows = await allRows<{ name: string }>(db, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
     return rows.map((row) => row.name);
   });
@@ -162,7 +167,7 @@ export async function getSchemaSQLite(
   table: string,
   credentials?: DatabaseCredentials
 ): Promise<Array<{ name: string; type: string; nullable: boolean }>> {
-  return withSQLiteDatabase(credentials, async (db) => {
+  return withSQLiteDatabase(credentials ?? getActiveDatabaseCredentials('sqlite'), async (db) => {
     const rows = await allRows<{ name: string; type: string; notnull: number }>(db, `PRAGMA table_info(${quoteSqliteIdentifier(table)})`);
     return rows.map((row) => ({
       name: row.name,
@@ -184,7 +189,7 @@ export async function getRelationshipsSQLite(
     referenced_column: string;
   }>
 > {
-  return withSQLiteDatabase(credentials, async (db) => {
+  return withSQLiteDatabase(credentials ?? getActiveDatabaseCredentials('sqlite'), async (db) => {
     const relationships: Array<{
       constraint: string;
       table: string;
