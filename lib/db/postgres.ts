@@ -1,6 +1,7 @@
 import { Pool, type PoolClient, type QueryConfig, type QueryResultRow } from 'pg';
 
 import { CONFIG } from '@/lib/config';
+import { getActiveDatabaseCredentials } from '@/lib/runtime/byoc';
 import type { DatabaseCredentials } from '@/lib/types';
 
 let pool: Pool | null = null;
@@ -64,8 +65,13 @@ export async function queryPostgres<T extends QueryResultRow = QueryResultRow>(
   params: unknown[] = [],
   credentials?: DatabaseCredentials['postgres']
 ) {
-  const isDynamic = Boolean(credentials);
-  const currentPool = credentials ? getDynamicPool(credentials) : getPool();
+  const resolvedCredentials = credentials ?? getActiveDatabaseCredentials('postgres')?.postgres;
+  if (CONFIG.byoc.enabled && !resolvedCredentials) {
+    throw new Error('BYOC mode is enabled. PostgreSQL credentials are required.');
+  }
+
+  const isDynamic = Boolean(resolvedCredentials);
+  const currentPool = resolvedCredentials ? getDynamicPool(resolvedCredentials) : getPool();
   let client: PoolClient | null = null;
   let releaseError: Error | undefined;
 

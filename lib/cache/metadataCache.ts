@@ -1,6 +1,7 @@
 import type { DBType, DatabaseCredentials } from '@/lib/types';
 
 import { buildStableHash, getToolCacheMetrics, readThroughCache } from '@/lib/cache/toolCache';
+import { fingerprintDatabaseCredentials } from '@/lib/runtime/byoc';
 
 type MetadataCacheOptions<T> = {
   db: DBType;
@@ -28,11 +29,7 @@ function normalizeKeyPart(value: string | undefined): string {
 }
 
 function fingerprintCredentials(credentials?: DatabaseCredentials): string {
-  if (!credentials) {
-    return 'default';
-  }
-
-  return buildStableHash(credentials);
+  return fingerprintDatabaseCredentials(credentials);
 }
 
 function buildParamsHash(params?: Record<string, unknown>): string {

@@ -28,6 +28,12 @@ export const CONFIG = {
     summaryContextLines: Math.max(1, Math.min(10, Number(process.env.GITHUB_SUMMARY_CONTEXT_LINES || '3'))),
     summaryPreviewBytes: Math.max(500, Number(process.env.GITHUB_SUMMARY_PREVIEW_BYTES || '2000'))
   },
+  byoc: {
+    enabled: Boolean(process.env.MCP_APP_PASSWORD?.trim()),
+    appPassword: process.env.MCP_APP_PASSWORD || '',
+    encryptionKey: process.env.MCP_CREDENTIALS_ENCRYPTION_KEY || '',
+    sessionTtlSeconds: Math.max(3_600, Number(process.env.MCP_BYOC_SESSION_TTL_SECONDS || String(30 * 24 * 60 * 60)))
+  },
   app: {
     maxRows: 50,
     previewRows: 5,

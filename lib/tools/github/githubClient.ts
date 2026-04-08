@@ -1,5 +1,6 @@
 import { CONFIG } from '@/lib/config';
 import { GITHUB_CACHE_TTLS, readThroughGitHubCache } from '@/lib/cache/githubCache';
+import { getActiveGitHubCredentials } from '@/lib/runtime/byoc';
 import { logMcpError } from '@/lib/runtime/observability';
 import {
   ensureAllowedGitHubRepository,
@@ -124,9 +125,14 @@ function recordScope(scope?: { org?: string; repo?: string }): void {
 }
 
 function getGitHubToken(): string {
-  const token = CONFIG.github.pat.trim();
+  const activeCredentials = getActiveGitHubCredentials();
+  if (CONFIG.byoc.enabled && !activeCredentials?.pat?.trim()) {
+    throw new Error('BYOC mode is enabled. Save GitHub credentials first.');
+  }
+
+  const token = activeCredentials?.pat?.trim() || CONFIG.github.pat.trim();
   if (!token) {
-    throw new Error('GitHub PAT is not configured. Set GITHUB_PAT in the environment.');
+    throw new Error('GitHub PAT is not configured. Set GITHUB_PAT or save a BYOC GitHub token.');
   }
 
   return token;

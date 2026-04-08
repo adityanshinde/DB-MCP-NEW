@@ -1,4 +1,4 @@
-import { getRelationships } from '@/lib/tools/getRelationships';
+import { getRelationships } from '@/lib/tools/database/getRelationships';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
 
 type RelationEdge = {

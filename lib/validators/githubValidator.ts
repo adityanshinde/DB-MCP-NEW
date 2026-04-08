@@ -1,4 +1,5 @@
 import { CONFIG } from '@/lib/config';
+import { getActiveGitHubCredentials } from '@/lib/runtime/byoc';
 
 const GITHUB_REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
@@ -18,10 +19,15 @@ export function normalizeGitHubRepository(repository: string): string {
 
 export function ensureAllowedGitHubRepository(repository: string): string {
   const normalized = normalizeGitHubRepository(repository).toLowerCase();
-  const allowedRepos = CONFIG.github.allowedRepos;
+  const activeCredentials = getActiveGitHubCredentials();
+  if (CONFIG.byoc.enabled && !activeCredentials) {
+    throw new Error('BYOC mode is enabled. Save GitHub credentials first.');
+  }
+
+  const allowedRepos = activeCredentials?.allowedRepos?.length ? activeCredentials.allowedRepos : CONFIG.github.allowedRepos;
 
   if (allowedRepos.length === 0) {
-    throw new Error('GitHub repositories are not configured. Set GITHUB_ALLOWED_REPOS first.');
+    throw new Error('GitHub repositories are not configured. Set GITHUB_ALLOWED_REPOS or save a BYOC GitHub allowlist.');
   }
 
   const allowedSet = new Set(allowedRepos.map((repo) => repo.toLowerCase()));

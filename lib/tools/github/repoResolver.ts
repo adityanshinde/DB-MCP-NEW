@@ -4,6 +4,7 @@ import {
   recordGitHubExcessiveRepoScan,
   recordGitHubRepoResolutionAttempt
 } from '@/lib/tools/github/githubClient';
+import { getActiveGitHubCredentials } from '@/lib/runtime/byoc';
 import { ensureAllowedGitHubRepository, normalizeGitHubRepository } from '@/lib/validators/githubValidator';
 
 export type GitHubRepositoryResolution = {
@@ -13,9 +14,14 @@ export type GitHubRepositoryResolution = {
 };
 
 function normalizeOrgName(org?: string): string {
-  const resolved = org?.trim() || CONFIG.github.orgName.trim();
+  const activeCredentials = getActiveGitHubCredentials();
+  if (CONFIG.byoc.enabled && !activeCredentials) {
+    throw new Error('BYOC mode is enabled. Save GitHub credentials first.');
+  }
+
+  const resolved = org?.trim() || activeCredentials?.orgName?.trim() || CONFIG.github.orgName.trim();
   if (!resolved) {
-    throw new Error('GitHub organization is required. Set GITHUB_ORG_NAME or provide org explicitly.');
+    throw new Error('GitHub organization is required. Set GITHUB_ORG_NAME, save a BYOC GitHub org name, or provide org explicitly.');
   }
 
   return resolved;
@@ -23,17 +29,25 @@ function normalizeOrgName(org?: string): string {
 
 function getAllowedReposForOrg(org: string): string[] {
   const normalizedOrg = org.toLowerCase();
-  return CONFIG.github.allowedRepos.filter((repo) => repo.toLowerCase().startsWith(`${normalizedOrg}/`));
+  const activeCredentials = getActiveGitHubCredentials();
+  const allowedRepos = activeCredentials?.allowedRepos?.length ? activeCredentials.allowedRepos : CONFIG.github.allowedRepos;
+  return allowedRepos.filter((repo) => repo.toLowerCase().startsWith(`${normalizedOrg}/`));
 }
 
 export function getAllowedOrgList(): string[] {
-  const derivedOrgs = new Set<string>(CONFIG.github.allowedRepos.map((repo) => repo.split('/')[0]?.trim().toLowerCase()).filter(Boolean) as string[]);
+  const active = getActiveGitHubCredentials();
+  const sourceRepos = active?.allowedRepos?.length ? active.allowedRepos : CONFIG.github.allowedRepos;
+  const sourceOrgs = active?.allowedOrgs?.length ? active.allowedOrgs : CONFIG.github.allowedOrgs;
 
-  if (CONFIG.github.orgName.trim()) {
+  const derivedOrgs = new Set<string>(sourceRepos.map((repo) => repo.split('/')[0]?.trim().toLowerCase()).filter(Boolean) as string[]);
+
+  if (active?.orgName?.trim()) {
+    derivedOrgs.add(active.orgName.trim().toLowerCase());
+  } else if (CONFIG.github.orgName.trim()) {
     derivedOrgs.add(CONFIG.github.orgName.trim().toLowerCase());
   }
 
-  for (const org of CONFIG.github.allowedOrgs) {
+  for (const org of sourceOrgs) {
     if (org.trim()) {
       derivedOrgs.add(org.trim().toLowerCase());
     }

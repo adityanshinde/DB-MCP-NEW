@@ -337,6 +337,18 @@ export type DatabaseCredentials = {
   };
 };
 
+export type GitHubCredentials = {
+  pat: string;
+  orgName?: string;
+  allowedOrgs?: string[];
+  allowedRepos?: string[];
+};
+
+export type UserCredentials = {
+  db?: DatabaseCredentials;
+  github?: GitHubCredentials;
+};
+
 export type ToolInputMap = {
   list_schemas: ListSchemasInput;
   get_database_info: GetDatabaseInfoInput;
@@ -383,7 +395,7 @@ export type ToolInputMap = {
 export type ToolRequestWithCredentials<TTool extends ToolName = ToolName> = {
   tool: TTool;
   input: ToolInputMap[TTool];
-  credentials?: DatabaseCredentials;
+  credentials?: UserCredentials;
 };
 
 export type ToolRequest<TTool extends ToolName = ToolName> = {

@@ -3,7 +3,7 @@ import { queryMySQL } from '@/lib/db/mysql';
 import { queryPostgres } from '@/lib/db/postgres';
 import { querySQLite } from '@/lib/db/sqlite';
 import type { DBType, DatabaseCredentials, ToolResponse } from '@/lib/types';
-import { normalizeSchemaFilter, quoteIdentifier } from '@/lib/tools/toolUtils';
+import { normalizeSchemaFilter, quoteIdentifier } from '@/lib/tools/database/toolUtils';
 
 export async function getRowCount(
   db: DBType,

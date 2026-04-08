@@ -7,24 +7,36 @@ import * as z from 'zod/v4';
 
 import { CONFIG } from '@/lib/config';
 
-import { getConstraints } from '@/lib/tools/getConstraints';
-import { compareSchema } from '@/lib/tools/compareSchema';
-import { getForeignKeySummary } from '@/lib/tools/getForeignKeySummary';
-import { getDatabaseInfo } from '@/lib/tools/getDatabaseInfo';
-import { getColumnStats } from '@/lib/tools/getColumnStats';
-import { compareObjectVersions } from '@/lib/tools/compareObjectVersions';
-import { getDependencyGraph } from '@/lib/tools/getDependencyGraph';
-import { getFunctionSummary } from '@/lib/tools/getFunctionSummary';
-import { getIndexes } from '@/lib/tools/getIndexes';
-import { getRelationPath } from '@/lib/tools/getRelationPath';
-import { getProcedureSummary } from '@/lib/tools/getProcedureSummary';
-import { getRelationships } from '@/lib/tools/getRelationships';
-import { getSampleRows } from '@/lib/tools/getSampleRows';
-import { explainQuery } from '@/lib/tools/explainQuery';
-import { getTableSchema } from '@/lib/tools/getSchema';
-import { getTableSampleByColumns } from '@/lib/tools/getTableSampleByColumns';
-import { getTableSummary } from '@/lib/tools/getTableSummary';
-import { executeReadQuery } from '@/lib/tools/executeReadQuery';
+import { compareObjectVersions } from '@/lib/tools/database/compareObjectVersions';
+import { compareSchema } from '@/lib/tools/database/compareSchema';
+import { explainQuery } from '@/lib/tools/database/explainQuery';
+import { executeReadQuery } from '@/lib/tools/database/executeReadQuery';
+import { getColumnStats } from '@/lib/tools/database/getColumnStats';
+import { getConstraints } from '@/lib/tools/database/getConstraints';
+import { getDatabaseInfo } from '@/lib/tools/database/getDatabaseInfo';
+import { getDependencyGraph } from '@/lib/tools/database/getDependencyGraph';
+import { getForeignKeySummary } from '@/lib/tools/database/getForeignKeySummary';
+import { getFunctionSummary } from '@/lib/tools/database/getFunctionSummary';
+import { getIndexes } from '@/lib/tools/database/getIndexes';
+import { getProcedureSummary } from '@/lib/tools/database/getProcedureSummary';
+import { getRelationPath } from '@/lib/tools/database/getRelationPath';
+import { getRelationships } from '@/lib/tools/database/getRelationships';
+import { getRowCount } from '@/lib/tools/database/getRowCount';
+import { getSampleRows } from '@/lib/tools/database/getSampleRows';
+import { getTableSampleByColumns } from '@/lib/tools/database/getTableSampleByColumns';
+import { getTableSchema } from '@/lib/tools/database/getSchema';
+import { getTableSummary } from '@/lib/tools/database/getTableSummary';
+import { getViewDefinition } from '@/lib/tools/database/getViewDefinition';
+import { getViewSummary } from '@/lib/tools/database/getViewSummary';
+import { listSchemas } from '@/lib/tools/database/listSchemas';
+import { listStoredProcedures } from '@/lib/tools/database/listStoredProcedures';
+import { listTables } from '@/lib/tools/database/listTables';
+import { runQuery } from '@/lib/tools/database/runQuery';
+import { searchColumns } from '@/lib/tools/database/searchColumns';
+import { searchFunctions } from '@/lib/tools/database/searchFunctions';
+import { searchProcedures } from '@/lib/tools/database/searchProcedures';
+import { searchTables } from '@/lib/tools/database/searchTables';
+import { searchViews } from '@/lib/tools/database/searchViews';
 import { listOrgRepos } from '@/lib/tools/github/listOrgRepos';
 import { getRepoTree } from '@/lib/tools/github/getRepoTree';
 import { getFileContent } from '@/lib/tools/github/getFileContent';
@@ -36,30 +48,25 @@ import { getFileHistory } from '@/lib/tools/github/getFileHistory';
 import { compareRefs } from '@/lib/tools/github/compareRefs';
 import { getPullRequestComments } from '@/lib/tools/github/getPullRequestComments';
 import { getGitHubMetrics } from '@/lib/tools/github/githubClient';
-import { getViewSummary } from '@/lib/tools/getViewSummary';
-import { listSchemas } from '@/lib/tools/listSchemas';
-import { listStoredProcedures } from '@/lib/tools/listStoredProcedures';
-import { listTables } from '@/lib/tools/listTables';
-import { getRowCount } from '@/lib/tools/getRowCount';
-import { searchTables } from '@/lib/tools/searchTables';
-import { searchViews } from '@/lib/tools/searchViews';
-import { searchFunctions } from '@/lib/tools/searchFunctions';
-import { searchProcedures } from '@/lib/tools/searchProcedures';
-import { searchColumns } from '@/lib/tools/searchColumns';
-import { getViewDefinition } from '@/lib/tools/getViewDefinition';
-import { runQuery } from '@/lib/tools/runQuery';
 import { getMetadataCacheMetrics } from '@/lib/cache/metadataCache';
+import {
+  loadByocSessionCredentials,
+  readBodyCredentials,
+  readByocToken,
+  runWithByocRequestContext,
+  saveByocSessionCredentials,
+} from '@/lib/runtime/byoc';
 import { installProcessGuards } from '@/lib/runtime/processGuards';
 import { MCP_METRICS } from '@/lib/runtime/mcpMetrics';
 import { logMcpEvent, logMcpError } from '@/lib/runtime/observability';
-import type { ToolRequestWithCredentials, ToolResponse } from '@/lib/types';
+import type { ToolRequestWithCredentials, ToolResponse, UserCredentials } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ALLOWED_ORIGIN = process.env.MCP_UI_ORIGIN?.trim() || '';
 const ALLOWED_METHODS = 'POST, GET, DELETE, OPTIONS';
-const ALLOWED_HEADERS = 'Content-Type, MCP-Protocol-Version, Mcp-Session-Id';
+const ALLOWED_HEADERS = 'Content-Type, MCP-Protocol-Version, Mcp-Session-Id, Authorization, X-Byoc-Token';
 const SUPPORTED_DATABASES = ['postgres', 'mssql', 'mysql', 'sqlite'] as const;
 
 installProcessGuards();
@@ -74,6 +81,7 @@ type SessionEntry = {
   queue: Promise<void>;
   createdAt: number;
   lastUsedAt: number;
+  credentials?: UserCredentials;
 };
 
 type SessionResolution = {
@@ -118,6 +126,40 @@ function readMcpMethod(rawBody?: string): string | null {
 
 function isInitializationPayload(rawBody?: string): boolean {
   return readMcpMethod(rawBody) === 'initialize';
+}
+
+async function resolveByocCredentialsForRequest(request: Request, rawBody?: string): Promise<UserCredentials | undefined> {
+  const token = readByocToken(request);
+  const parsedBody = rawBody ? (() => {
+    try {
+      return JSON.parse(rawBody) as Partial<ToolRequestWithCredentials>;
+    } catch {
+      return null;
+    }
+  })() : null;
+  const bodyCredentials = parsedBody?.credentials ?? readBodyCredentials(parsedBody);
+
+  if (token && bodyCredentials) {
+    return saveByocSessionCredentials(token, bodyCredentials);
+  }
+
+  if (bodyCredentials) {
+    return bodyCredentials;
+  }
+
+  if (token) {
+    const storedCredentials = await loadByocSessionCredentials(token);
+    if (storedCredentials) {
+      return storedCredentials;
+    }
+  }
+
+  return undefined;
+}
+
+async function runWithRequestCredentials<T>(request: Request, rawBody: string | undefined, work: () => Promise<T>): Promise<T> {
+  const credentials = await resolveByocCredentialsForRequest(request, rawBody);
+  return runWithByocRequestContext({ token: readByocToken(request) ?? undefined, credentials }, work);
 }
 
 async function createSessionEntry(sessionId: string): Promise<SessionEntry> {
@@ -1279,14 +1321,16 @@ async function handleMcpRequest(request: Request, rawBody?: string): Promise<Res
   const coldStartForThisRequest = isColdStart;
 
   try {
-    const server = createMcpServer();
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true
-    });
+    const response = await runWithRequestCredentials(request, rawBody, async () => {
+      const server = createMcpServer();
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true
+      });
 
-    await server.connect(transport);
-    const response = await transport.handleRequest(request);
+      await server.connect(transport);
+      return transport.handleRequest(request);
+    });
 
     isColdStart = false;
     return withCacheHeaders(withCors(response), coldStartForThisRequest);
@@ -1328,222 +1372,228 @@ async function handleSessionClose(request: Request): Promise<Response> {
   );
 }
 
-async function handleLegacyRequest(request: Request): Promise<Response> {
+async function handleLegacyRequest(request: Request, rawBody?: string): Promise<Response> {
   MCP_METRICS.request.legacyRequests += 1;
   logRequestEvent('request.incoming', request, { requestKind: 'legacy' });
 
   try {
-    const body = (await request.json()) as Partial<ToolRequestWithCredentials>;
+    const parsedBody = rawBody ? (JSON.parse(rawBody) as Partial<ToolRequestWithCredentials>) : (await request.json()) as Partial<ToolRequestWithCredentials>;
+    const credentials = await resolveByocCredentialsForRequest(request, rawBody);
+    const body: Partial<ToolRequestWithCredentials> = {
+      ...parsedBody,
+      credentials: parsedBody.credentials ?? credentials
+    };
 
     if (!body.tool) {
       return withCors(jsonError('A tool name is required.', 400));
     }
 
-    switch (body.tool) {
-      case 'run_query': {
-        const input = body.input as ToolRequestWithCredentials<'run_query'>['input'];
-        if (!input?.db || !input?.query) {
-          return withCors(jsonError('run_query requires db and query.', 400));
+    return await runWithByocRequestContext({ token: readByocToken(request) ?? undefined, credentials: body.credentials }, async () => {
+      switch (body.tool) {
+        case 'run_query': {
+          const input = body.input as ToolRequestWithCredentials<'run_query'>['input'];
+          if (!input?.db || !input?.query) {
+            return withCors(jsonError('run_query requires db and query.', 400));
+          }
+
+          const result = await runQuery(input.db, input.query, body.credentials?.db);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await runQuery(input.db, input.query, body.credentials);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
+        case 'db.execute_read_query': {
+          const input = body.input as ToolRequestWithCredentials<'db.execute_read_query'>['input'];
+          if (!input?.db || !input?.query) {
+            return withCors(jsonError('db.execute_read_query requires db and query.', 400));
+          }
 
-      case 'db.execute_read_query': {
-        const input = body.input as ToolRequestWithCredentials<'db.execute_read_query'>['input'];
-        if (!input?.db || !input?.query) {
-          return withCors(jsonError('db.execute_read_query requires db and query.', 400));
+          const result = await executeReadQuery(input.db, input.query, body.credentials?.db);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await executeReadQuery(input.db, input.query, body.credentials);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
+        case 'list_schemas': {
+          const input = body.input as ToolRequestWithCredentials<'list_schemas'>['input'];
+          if (!input?.db) {
+            return withCors(jsonError('list_schemas requires db.', 400));
+          }
 
-      case 'list_schemas': {
-        const input = body.input as ToolRequestWithCredentials<'list_schemas'>['input'];
-        if (!input?.db) {
-          return withCors(jsonError('list_schemas requires db.', 400));
+          const result = await listSchemas(input.db, body.credentials?.db);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await listSchemas(input.db, body.credentials);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
+        case 'github.get_repo_tree': {
+          const input = body.input as ToolRequestWithCredentials<'github.get_repo_tree'>['input'];
+          if (!input?.repo && !input?.org) {
+            return withCors(jsonError('github.get_repo_tree requires repo or org.', 400));
+          }
 
-      case 'github.get_repo_tree': {
-        const input = body.input as ToolRequestWithCredentials<'github.get_repo_tree'>['input'];
-        if (!input?.repo && !input?.org) {
-          return withCors(jsonError('github.get_repo_tree requires repo or org.', 400));
+          const result = await getRepoTree(input.repo, input.path, input.branch, input.depth, input.org);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await getRepoTree(input.repo, input.path, input.branch, input.depth, input.org);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
+        case 'github.get_file_content': {
+          const input = body.input as ToolRequestWithCredentials<'github.get_file_content'>['input'];
+          if ((!input?.repo && !input?.org) || !input?.path) {
+            return withCors(jsonError('github.get_file_content requires repo or org and path.', 400));
+          }
 
-      case 'github.get_file_content': {
-        const input = body.input as ToolRequestWithCredentials<'github.get_file_content'>['input'];
-        if ((!input?.repo && !input?.org) || !input?.path) {
-          return withCors(jsonError('github.get_file_content requires repo or org and path.', 400));
+          const result = await getFileContent(input.repo, input.path, input.branch, input.org);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await getFileContent(input.repo, input.path, input.branch, input.org);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
+        case 'github.search_code': {
+          const input = body.input as ToolRequestWithCredentials<'github.search_code'>['input'];
+          if ((!input?.repo && !input?.org) || !input?.query) {
+            return withCors(jsonError('github.search_code requires repo or org and query.', 400));
+          }
 
-      case 'github.search_code': {
-        const input = body.input as ToolRequestWithCredentials<'github.search_code'>['input'];
-        if ((!input?.repo && !input?.org) || !input?.query) {
-          return withCors(jsonError('github.search_code requires repo or org and query.', 400));
+          const result = await searchCode(input.repo, input.query, input.limit, input.language, input.org);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await searchCode(input.repo, input.query, input.limit, input.language, input.org);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
-
-      case 'github.list_org_repos': {
-        const input = body.input as ToolRequestWithCredentials<'github.list_org_repos'>['input'];
-        const result = await listOrgRepos({
-          org: input?.org,
-          page: input?.page,
-          per_page: input?.per_page,
-          filter: input?.filter,
-          sort: input?.sort,
-          direction: input?.direction
-        });
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
-
-      case 'github.file_summary': {
-        const input = body.input as ToolRequestWithCredentials<'github.file_summary'>['input'];
-        if (!input?.path || (!input?.repo && !input?.org)) {
-          return withCors(jsonError('github.file_summary requires repo or org and path.', 400));
+        case 'github.list_org_repos': {
+          const input = body.input as ToolRequestWithCredentials<'github.list_org_repos'>['input'];
+          const result = await listOrgRepos({
+            org: input?.org,
+            page: input?.page,
+            per_page: input?.per_page,
+            filter: input?.filter,
+            sort: input?.sort,
+            direction: input?.direction
+          });
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await fileSummary(input);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
+        case 'github.file_summary': {
+          const input = body.input as ToolRequestWithCredentials<'github.file_summary'>['input'];
+          if (!input?.path || (!input?.repo && !input?.org)) {
+            return withCors(jsonError('github.file_summary requires repo or org and path.', 400));
+          }
 
-      case 'github.module_summary': {
-        const input = body.input as ToolRequestWithCredentials<'github.module_summary'>['input'];
-        if (!input?.path || (!input?.repo && !input?.org)) {
-          return withCors(jsonError('github.module_summary requires repo or org and path.', 400));
+          const result = await fileSummary(input);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await moduleSummary(input);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
+        case 'github.module_summary': {
+          const input = body.input as ToolRequestWithCredentials<'github.module_summary'>['input'];
+          if (!input?.path || (!input?.repo && !input?.org)) {
+            return withCors(jsonError('github.module_summary requires repo or org and path.', 400));
+          }
 
-      case 'get_database_info': {
-        const input = body.input as ToolRequestWithCredentials<'get_database_info'>['input'];
-        if (!input?.db) {
-          return withCors(jsonError('get_database_info requires db.', 400));
+          const result = await moduleSummary(input);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
         }
 
-        const result = await getDatabaseInfo(input.db, body.credentials);
-        return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
-      }
+        case 'get_database_info': {
+          const input = body.input as ToolRequestWithCredentials<'get_database_info'>['input'];
+          if (!input?.db) {
+            return withCors(jsonError('get_database_info requires db.', 400));
+          }
 
-      case 'list_tables': {
+          const result = await getDatabaseInfo(input.db, body.credentials?.db);
+          return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
+        }
+
+        case 'list_tables': {
         const input = body.input as ToolRequestWithCredentials<'list_tables'>['input'];
         if (!input?.db) {
           return withCors(jsonError('list_tables requires db.', 400));
         }
 
-        const result = await listTables(input.db, body.credentials);
+        const result = await listTables(input.db, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'search_columns': {
+        case 'search_columns': {
         const input = body.input as ToolRequestWithCredentials<'search_columns'>['input'];
         if (!input?.db || !input?.query) {
           return withCors(jsonError('search_columns requires db and query.', 400));
         }
 
-        const result = await searchColumns(input.db, input.query, input.schema, input.limit, body.credentials);
+        const result = await searchColumns(input.db, input.query, input.schema, input.limit, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'search_tables': {
+        case 'search_tables': {
         const input = body.input as ToolRequestWithCredentials<'search_tables'>['input'];
         if (!input?.db || !input?.query) {
           return withCors(jsonError('search_tables requires db and query.', 400));
         }
 
-        const result = await searchTables(input.db, input.query, input.schema, body.credentials);
+        const result = await searchTables(input.db, input.query, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'search_procedures': {
+        case 'search_procedures': {
         const input = body.input as ToolRequestWithCredentials<'search_procedures'>['input'];
         if (!input?.db || !input?.query) {
           return withCors(jsonError('search_procedures requires db and query.', 400));
         }
 
-        const result = await searchProcedures(input.db, input.query, input.schema, input.limit, body.credentials);
+        const result = await searchProcedures(input.db, input.query, input.schema, input.limit, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_table_schema': {
+        case 'get_table_schema': {
         const input = body.input as ToolRequestWithCredentials<'get_table_schema'>['input'];
         if (!input?.db || !input?.table) {
           return withCors(jsonError('get_table_schema requires db and table.', 400));
         }
 
-        const result = await getTableSchema(input.db, input.table, input.schema, body.credentials);
+        const result = await getTableSchema(input.db, input.table, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_table_summary': {
+        case 'get_table_summary': {
         const input = body.input as ToolRequestWithCredentials<'get_table_summary'>['input'];
         if (!input?.db || !input?.table) {
           return withCors(jsonError('get_table_summary requires db and table.', 400));
         }
 
-        const result = await getTableSummary(input.db, input.table, input.schema, body.credentials);
+        const result = await getTableSummary(input.db, input.table, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_view_definition': {
+        case 'get_view_definition': {
         const input = body.input as ToolRequestWithCredentials<'get_view_definition'>['input'];
         if (!input?.db || !input?.view) {
           return withCors(jsonError('get_view_definition requires db and view.', 400));
         }
 
-        const result = await getViewDefinition(input.db, input.view, input.schema, body.credentials);
+        const result = await getViewDefinition(input.db, input.view, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_view_summary': {
+        case 'get_view_summary': {
         const input = body.input as ToolRequestWithCredentials<'get_view_summary'>['input'];
         if (!input?.db || !input?.view) {
           return withCors(jsonError('get_view_summary requires db and view.', 400));
         }
 
-        const result = await getViewSummary(input.db, input.view, input.schema, body.credentials);
+        const result = await getViewSummary(input.db, input.view, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_procedure_summary': {
+        case 'get_procedure_summary': {
         const input = body.input as ToolRequestWithCredentials<'get_procedure_summary'>['input'];
         if (!input?.db || !input?.procedure) {
           return withCors(jsonError('get_procedure_summary requires db and procedure.', 400));
         }
 
-        const result = await getProcedureSummary(input.db, input.procedure, input.schema, body.credentials);
+        const result = await getProcedureSummary(input.db, input.procedure, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_function_summary': {
+        case 'get_function_summary': {
         const input = body.input as ToolRequestWithCredentials<'get_function_summary'>['input'];
         if (!input?.db || !input?.func) {
           return withCors(jsonError('get_function_summary requires db and func.', 400));
         }
 
-        const result = await getFunctionSummary(input.db, input.func, input.schema, body.credentials);
+        const result = await getFunctionSummary(input.db, input.func, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'compare_object_versions': {
+        case 'compare_object_versions': {
         const input = body.input as ToolRequestWithCredentials<'compare_object_versions'>['input'];
         if (!input?.db || !input?.object_type || !input?.left_name || !input?.right_name) {
           return withCors(jsonError('compare_object_versions requires db, object_type, left_name, and right_name.', 400));
@@ -1557,84 +1607,85 @@ async function handleLegacyRequest(request: Request): Promise<Response> {
           input.schema,
           input.left_schema,
           input.right_schema,
-          body.credentials
+          body.credentials?.db
         );
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_sample_rows': {
+        case 'get_sample_rows': {
         const input = body.input as ToolRequestWithCredentials<'get_sample_rows'>['input'];
         if (!input?.db || !input?.table) {
           return withCors(jsonError('get_sample_rows requires db and table.', 400));
         }
 
-        const result = await getSampleRows(input.db, input.table, input.schema, input.limit, body.credentials);
+        const result = await getSampleRows(input.db, input.table, input.schema, input.limit, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'explain_query': {
+        case 'explain_query': {
         const input = body.input as ToolRequestWithCredentials<'explain_query'>['input'];
         if (!input?.db || !input?.query) {
           return withCors(jsonError('explain_query requires db and query.', 400));
         }
 
-        const result = await explainQuery(input.db, input.query, body.credentials);
+        const result = await explainQuery(input.db, input.query, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_relationships': {
+        case 'get_relationships': {
         const input = body.input as ToolRequestWithCredentials<'get_relationships'>['input'];
         if (!input?.db) {
           return withCors(jsonError('get_relationships requires db.', 400));
         }
 
-        const result = await getRelationships(input.db, input.table, input.schema, body.credentials);
+        const result = await getRelationships(input.db, input.table, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_relation_path': {
+        case 'get_relation_path': {
         const input = body.input as ToolRequestWithCredentials<'get_relation_path'>['input'];
         if (!input?.db || !input?.source_table || !input?.target_table) {
           return withCors(jsonError('get_relation_path requires db, source_table, and target_table.', 400));
         }
 
-        const result = await getRelationPath(input.db, input.source_table, input.target_table, input.schema, input.limit, body.credentials);
+        const result = await getRelationPath(input.db, input.source_table, input.target_table, input.schema, input.limit, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_indexes': {
+        case 'get_indexes': {
         const input = body.input as ToolRequestWithCredentials<'get_indexes'>['input'];
         if (!input?.db) {
           return withCors(jsonError('get_indexes requires db.', 400));
         }
 
-        const result = await getIndexes(input.db, input.table, input.schema, body.credentials);
+        const result = await getIndexes(input.db, input.table, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'get_constraints': {
+        case 'get_constraints': {
         const input = body.input as ToolRequestWithCredentials<'get_constraints'>['input'];
         if (!input?.db) {
           return withCors(jsonError('get_constraints requires db.', 400));
         }
 
-        const result = await getConstraints(input.db, input.table, input.schema, body.credentials);
+        const result = await getConstraints(input.db, input.table, input.schema, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      case 'list_stored_procedures': {
+        case 'list_stored_procedures': {
         const input = body.input as ToolRequestWithCredentials<'list_stored_procedures'>['input'];
         if (!input?.db) {
           return withCors(jsonError('list_stored_procedures requires db.', 400));
         }
 
-        const result = await listStoredProcedures(input.db, body.credentials);
+        const result = await listStoredProcedures(input.db, body.credentials?.db);
         return withCors(NextResponse.json(result, { status: result.success ? 200 : 400 }));
       }
 
-      default:
-        return withCors(jsonError(`Unsupported tool: ${body.tool}`, 400));
-    }
+        default:
+          return withCors(jsonError(`Unsupported tool: ${body.tool}`, 400));
+      }
+    });
   } catch (error) {
     MCP_METRICS.request.errors += 1;
     logMcpError('request.legacy_failed', error, {
@@ -1697,7 +1748,7 @@ export async function POST(request: Request) {
       return await handleMcpRequest(request, rawBody);
     }
 
-    return await handleLegacyRequest(request);
+    return await handleLegacyRequest(request, rawBody);
   } catch (error) {
     MCP_METRICS.request.errors += 1;
     logMcpError('request.post_failed', error, { errors: MCP_METRICS.request.errors });
